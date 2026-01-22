@@ -9,6 +9,34 @@
  */
 export const servicesConfig = [
     {
+        name: 'REDG 2023',
+        url: 'https://demos.booksandbooksdigital.com.co/ovas-doctorado-new/',
+        contentValidation: {
+            checkForApacheIndex: true
+        }
+    },
+    {
+        name: 'BOOKS 2025',
+        url: 'https://demos.booksandbooksdigital.com.co/12-ovas-books/',
+        contentValidation: {
+            checkForApacheIndex: true
+        }
+    },
+    {
+        name: 'VIMEP 2023',
+        url: 'https://demos.booksandbooksdigital.com.co/12-vimep-2023/',
+        contentValidation: {
+            checkForApacheIndex: true
+        }
+    },
+    {
+        name: 'VIMEP 2024',
+        url: 'https://demos.booksandbooksdigital.com.co/12-vimep-2024/',
+        contentValidation: {
+            checkForApacheIndex: true
+        }
+    },
+    {
         name: 'VIMEP 2025',
         url: 'https://demos.booksandbooksdigital.com.co/12-vimep-2025/',
         contentValidation: {
@@ -16,15 +44,29 @@ export const servicesConfig = [
         }
     },
     {
-        name: 'VIMEP 2023',
-        url: 'https://demos.booksandbooksdigital.com.co/vimep-2023/',
+        name: '100 OVAS',
+        url: 'https://demos.booksandbooksdigital.com.co/100-ovas/',
         contentValidation: {
             checkForApacheIndex: true
         }
     },
     {
-        name: 'Simuladores 2023',
-        url: 'https://demos.booksandbooksdigital.com.co/simuladores-2023/',
+        name: '120 OVAS',
+        url: 'https://demos.booksandbooksdigital.com.co/120-ovas/',
+        contentValidation: {
+            checkForApacheIndex: true
+        }
+    },
+    {
+        name: '120 OVAS 2023',
+        url: 'https://demos.booksandbooksdigital.com.co/120-ovas-2023/',
+        contentValidation: {
+            checkForApacheIndex: true
+        }
+    },
+    {
+        name: '200 OVAS 2025',
+        url: 'https://demos.booksandbooksdigital.com.co/200-ovas-2025/',
         contentValidation: {
             checkForApacheIndex: true
         }
