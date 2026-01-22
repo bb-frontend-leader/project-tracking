@@ -22,9 +22,6 @@ export class EmailSender implements EmailRepository {
     constructor() {
         // Build configuration from environment variables
         const config: EmailConfig = {
-            host: envs.SMTP_HOST,
-            port: envs.SMTP_PORT,
-            secure: envs.SMTP_SECURE,
             user: envs.SMTP_USER,
             pass: envs.SMTP_PASS,
             from: envs.EMAIL_FROM,
@@ -33,11 +30,10 @@ export class EmailSender implements EmailRepository {
 
         this.config = config;
         
-        // Initialize nodemailer transporter with SMTP settings
+        // Initialize nodemailer transporter using service configuration
+        // Using 'service' is more reliable than manual host/port configuration
         this.transporter = nodemailer.createTransport({
-            host: config.host,
-            port: config.port,
-            secure: config.secure,
+            service: envs.MAILER_SERVICE,
             auth: {
                 user: config.user,
                 pass: config.pass
