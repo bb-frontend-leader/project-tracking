@@ -1,5 +1,5 @@
 {
-  "name": "project-traking",
+  "name": "project-tracking",
   "version": "1.0.0",
   "description": "Sistema de monitoreo de sitios web con alertas por email",
   "main": "dist/main.js",
