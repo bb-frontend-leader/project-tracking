@@ -70,6 +70,13 @@ export const servicesConfig = [
         contentValidation: {
             checkForApacheIndex: true
         }
+    },
+    {
+        name: '300 OVAS 2026',
+        url: 'https://demos.booksandbooksdigital.com.co/300-ovas-2026/',
+        contentValidation: {
+            checkForApacheIndex: true
+        }
     }
     // Add more services here
     // Example:
