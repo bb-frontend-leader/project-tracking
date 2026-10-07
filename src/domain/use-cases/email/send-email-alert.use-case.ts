@@ -1,11 +1,12 @@
-import { EmailRepository } from "#domain/repositories/email.repository.js";
+import type { EmailRepository } from "#domain/repositories/email.repository.js";
+import type { AlertNotification } from "#domain/value-objects/alert-notification.value-object.js";
 
 /**
- * SendEmailAlert - Use case for sending email alerts
- * 
- * Encapsulates the business logic for sending alert notifications
- * when a service failure is detected. Delegates the actual email
- * sending to the email repository implementation.
+ * SendEmailAlert - Use case for sending email notifications
+ *
+ * Encapsulates the business logic for notifying that a service went down,
+ * is still down, or recovered. Delegates the actual email sending to the
+ * email repository implementation.
  */
 export class SendEmailAlert {
     /**
@@ -15,14 +16,12 @@ export class SendEmailAlert {
     constructor(private readonly email: EmailRepository) { }
 
     /**
-     * Sends an email alert about a service failure
-     * 
-     * @param serviceName - Name of the failed service
-     * @param serviceUrl - URL of the failed service
-     * @param error - Error message or description
+     * Sends an email notification about a service
+     *
+     * @param notification - Notification type and service details
      * @returns Promise that resolves when email is sent
      */
-    async execute(serviceName: string, serviceUrl: string, error: string): Promise<void> {
-        await this.email.sendAlert(serviceName, serviceUrl, error);
+    async execute(notification: AlertNotification): Promise<void> {
+        await this.email.sendAlert(notification);
     }
 }

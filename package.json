@@ -9,14 +9,15 @@
     "#domain/*": "./dist/domain/*",
     "#infrastructure/*": "./dist/infrastructure/*",
     "#presentation/*": "./dist/presentation/*",
-    "#application/*": "./dist/application/*",
     "#utils/*": "./dist/utils/*"
   },
   "scripts": {
-    "dev": "tsx src/main.ts",
+    "dev": "tsx watch src/main.ts",
     "build": "tsc",
     "start": "node dist/main.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "keywords": [
     "monitoring",
@@ -37,7 +38,6 @@
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@types/node": "^25.0.9",
-    "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^7.0.5",
     "eslint": "^9.39.2",
     "eslint-plugin-simple-import-sort": "^12.1.1",
@@ -46,5 +46,8 @@
     "jiti": "^2.6.1",
     "tsx": "^4.21.0",
     "typescript-eslint": "^8.53.1"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

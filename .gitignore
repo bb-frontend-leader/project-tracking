@@ -1,6 +1,9 @@
 # Variables de entorno
 .env
 
+# Lista de servicios a monitorear (propia de cada despliegue; plantilla: services.example.json)
+services.json
+
 # Dependencias
 node_modules/
 

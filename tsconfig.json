@@ -1,6 +1,6 @@
 {
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist"],
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts"],
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
@@ -25,7 +25,6 @@
       "#domain/*": ["./src/domain/*"],
       "#infrastructure/*": ["./src/infrastructure/*"],
       "#presentation/*": ["./src/presentation/*"],
-      "#application/*": ["./src/application/*"],
       "#utils/*": ["./src/utils/*"]
     }
   }

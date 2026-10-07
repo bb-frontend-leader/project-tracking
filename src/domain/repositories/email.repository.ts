@@ -1,15 +1,15 @@
+import type { AlertNotification } from '#domain/value-objects/alert-notification.value-object.js';
+
 /**
  * Repository interface for email operations
  * Implementations must provide both alert sending and connection verification
  */
 export interface EmailRepository {
     /**
-     * Send an alert email about a service failure
-     * @param serviceName - Name of the service that failed
-     * @param serviceUrl - URL of the service
-     * @param error - Error message describing the failure
+     * Send a notification email about a service (down, reminder or recovery)
+     * @param notification - Notification data
      */
-    sendAlert(serviceName: string, serviceUrl: string, error: string): Promise<void>;
+    sendAlert(notification: AlertNotification): Promise<void>;
 
     /**
      * Verify that the email service connection is working

@@ -5,45 +5,106 @@ import { LogEntity, LogStatusEnum } from '#domain/entities/log.entity.js';
 import { LogRepository } from '#domain/repositories/log.repository.js';
 
 /**
+ * Options for FileSystemDatasource
+ */
+export interface FileSystemDatasourceOptions {
+    /** Directory where daily log files are written (default: ./logs) */
+    logDir?: string;
+    /** Days to keep daily log files (default: 30) */
+    retentionDays?: number;
+    /** Maximum number of logs to keep in memory (default: 1000) */
+    maxLogsInMemory?: number;
+    /** IANA timezone used for file names and console output (default: America/Bogota) */
+    timezone?: string;
+}
+
+const LOG_FILE_PATTERN = /^monitor-(\d{4}-\d{2}-\d{2})\.log$/;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
  * FileSystemDatasource - File-based log persistence implementation
- * 
+ *
  * Manages log storage using both in-memory cache and file persistence.
+ * Logs are written as JSON lines (ISO 8601 timestamps) to one file per day
+ * (monitor-YYYY-MM-DD.log); files older than the retention period are deleted.
  * Provides console output with colored formatting and supports log export.
  */
 export class FileSystemDatasource implements LogRepository {
     private logs: LogEntity[] = [];
-    private logFilePath: string;
+    private logDir: string;
+    private retentionDays: number;
     private maxLogsInMemory: number;
+    private timezone: string;
+    private lastPrunedDay: string | null = null;
 
     /**
      * Creates a new FileSystemDatasource instance
-     * @param logFilePath - Optional custom path for log file (default: ./logs/monitor.log)
-     * @param maxLogsInMemory - Maximum number of logs to keep in memory (default: 1000)
+     * @param options - Optional settings (see FileSystemDatasourceOptions)
      */
-    constructor(logFilePath?: string, maxLogsInMemory: number = 1000) {
-        this.logFilePath = logFilePath || path.join(process.cwd(), 'logs', 'monitor.log');
-        this.maxLogsInMemory = maxLogsInMemory;
+    constructor(options: FileSystemDatasourceOptions = {}) {
+        this.logDir = options.logDir ?? path.join(process.cwd(), 'logs');
+        this.retentionDays = options.retentionDays ?? 30;
+        this.maxLogsInMemory = options.maxLogsInMemory ?? 1000;
+        this.timezone = options.timezone ?? 'America/Bogota';
         this.ensureLogDirectory();
+        this.pruneOldLogs(new Date());
     }
 
     /**
      * Ensures the log directory exists, creating it if necessary
      */
     private ensureLogDirectory(): void {
-        const logDir = path.dirname(this.logFilePath);
-        if (!fs.existsSync(logDir)) {
-            fs.mkdirSync(logDir, { recursive: true });
+        if (!fs.existsSync(this.logDir)) {
+            fs.mkdirSync(this.logDir, { recursive: true });
+        }
+    }
+
+    /**
+     * Returns the calendar day (YYYY-MM-DD) of a date in the configured timezone
+     * @param date - Date to format
+     */
+    private dayOf(date: Date): string {
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone: this.timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).format(date);
+    }
+
+    /**
+     * Deletes daily log files older than the retention period
+     * Runs at startup and once per day; failures never interrupt logging.
+     * @param now - Current time
+     */
+    private pruneOldLogs(now: Date): void {
+        const today = this.dayOf(now);
+        if (this.lastPrunedDay === today) return;
+        this.lastPrunedDay = today;
+
+        // ISO dates sort alphabetically, so a string comparison is enough
+        const oldestKept = this.dayOf(new Date(now.getTime() - this.retentionDays * DAY_MS));
+
+        try {
+            for (const file of fs.readdirSync(this.logDir)) {
+                const match = LOG_FILE_PATTERN.exec(file);
+                if (match && match[1] < oldestKept) {
+                    fs.rmSync(path.join(this.logDir, file), { force: true });
+                }
+            }
+        } catch (error) {
+            console.error('Error eliminando logs antiguos:', error);
         }
     }
 
     /**
      * Saves a log entry to memory, file, and console
-     * 
+     *
      * Performs three operations:
      * 1. Adds log to in-memory cache (with automatic cleanup)
-     * 2. Appends log to file in JSON format
+     * 2. Appends log to the file of its day in JSON format
      * 3. Outputs formatted log to console
-     * 
+     *
      * @param log - The log entity to save
      */
     saveLog(log: LogEntity) {
@@ -63,22 +124,18 @@ export class FileSystemDatasource implements LogRepository {
     }
 
     /**
-     * Writes a log entry to the log file in JSON format
+     * Writes a log entry to the daily log file as one JSON line
+     * The timestamp is ISO 8601 (UTC) and responseTime is a number of milliseconds,
+     * so every line can be read back with LogEntity.fromJson.
      * @param log - The log entity to write
      */
     private writeToFile(log: LogEntity): void {
-        const timestamp = log.timestamp.toLocaleString('es-CO', {
-            timeZone: 'America/Bogota'
-        });
-
-        const logAsJSON = JSON.stringify({
-            ...log,
-            timestamp,
-            responseTime: `${log.responseTime}ms`
-        }) + '\n';
+        const logAsJSON = JSON.stringify(log) + '\n';
+        const filePath = path.join(this.logDir, `monitor-${this.dayOf(log.timestamp)}.log`);
 
         try {
-            fs.appendFileSync(this.logFilePath, logAsJSON);
+            this.pruneOldLogs(log.timestamp);
+            fs.appendFileSync(filePath, logAsJSON);
         } catch (error) {
             console.error('Error escribiendo en log:', error);
         }
@@ -90,7 +147,7 @@ export class FileSystemDatasource implements LogRepository {
      */
     private logToConsole(entry: LogEntity): void {
         const timestamp = entry.timestamp.toLocaleString('es-CO', {
-            timeZone: 'America/Bogota',
+            timeZone: this.timezone,
             hour12: false
         });
 
@@ -115,7 +172,7 @@ export class FileSystemDatasource implements LogRepository {
 
     /**
      * Clears all logs from memory
-     * Note: Does not affect persisted log file
+     * Note: Does not affect persisted log files
      */
     clearLogs(): void {
         this.logs = [];
@@ -126,7 +183,7 @@ export class FileSystemDatasource implements LogRepository {
      * @param filePath - Optional custom export path (default: ./logs/export-{timestamp}.json)
      */
     exportLogsToFile(filePath?: string): void {
-        const exportPath = filePath || path.join(process.cwd(), 'logs', `export-${Date.now()}.json`);
+        const exportPath = filePath || path.join(this.logDir, `export-${Date.now()}.json`);
         fs.writeFileSync(exportPath, JSON.stringify(this.logs, null, 2));
         console.log(`📊 Logs exportados a: ${exportPath}`);
     }
