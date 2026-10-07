@@ -1,43 +1,55 @@
 import cron, { type ScheduledTask } from 'node-cron';
 
-import { envs } from '../config/plugins/env.plugin.js';
-
-import { Service } from '#domain/entities/service.entity.js';
+import { Service, type ServiceConfig } from '#domain/entities/service.entity.js';
+import { decideAlert } from '#domain/use-cases/alerts/decide-alert.js';
 import { CheckUseCase } from '#domain/use-cases/checks/check.use-case.js';
 import type { SendEmailAlert } from '#domain/use-cases/email/send-email-alert.use-case.js';
+import type { AlertNotification } from '#domain/value-objects/alert-notification.value-object.js';
+import type { CheckResult } from '#domain/value-objects/check-result.value-object.js';
 import type { MonitorConfig } from '#domain/value-objects/monitor-config.value-object.js';
 
 /**
+ * Optional collaborators of the MonitorService
+ */
+export interface MonitorServiceOptions {
+    /**
+     * Returns the current list of services to monitor. When provided, it is called
+     * at the start of every cycle so changes to the services file apply without a restart.
+     */
+    loadServices?: () => ServiceConfig[];
+
+    /** Called after every completed check cycle (e.g. to ping a heartbeat URL) */
+    onCycleComplete?: () => Promise<void> | void;
+}
+
+/**
  * MonitorService - Coordinates scheduled service health monitoring
- * 
+ *
  * Manages the monitoring lifecycle including:
- * - Registering services to monitor
+ * - Registering services to monitor (and reloading them every cycle)
  * - Scheduling periodic health checks via cron
- * - Sending email alerts for failures
+ * - Sending email alerts when a service goes down, stays down, or recovers
  * - Providing status reporting
  */
 export class MonitorService {
     private services: Service[] = [];
     private cronJob: ScheduledTask | null = null;
     private isRunning: boolean = false;
-    private config: MonitorConfig;
+    private isChecking: boolean = false;
 
     /**
      * Creates a new MonitorService instance
      * @param checkUseCase - Use case for performing service checks
      * @param sendEmailAlert - Use case for sending email alerts
+     * @param config - Scheduling and alerting parameters
+     * @param options - Optional services reloading and cycle hooks
      */
     constructor(
         private checkUseCase: CheckUseCase,
         private sendEmailAlert: SendEmailAlert,
-    ) {
-        // Load configuration from environment
-        this.config = {
-            checkInterval: envs.CHECK_INTERVAL,
-            timezone: envs.TIMEZONE,
-            maxConsecutiveFailures: envs.MAX_CONSECUTIVE_FAILURES
-        }
-    }
+        private config: MonitorConfig,
+        private options: MonitorServiceOptions = {},
+    ) {}
 
     /**
      * Adds a single service to the monitoring list
@@ -57,54 +69,145 @@ export class MonitorService {
     }
 
     /**
-     * Checks all registered services and sends alerts if needed
-     * 
-     * For each service:
-     * 1. Executes health check via CheckUseCase
-     * 2. Checks if failure threshold is exceeded
-     * 3. Sends email alert if necessary
+     * Reloads the services list from its source and reconciles it with the running one
+     *
+     * Services are matched by URL, so the ones that remain keep their state
+     * (consecutive failures, open incident). New services are added and the ones
+     * no longer listed are removed. If the source cannot be loaded or is invalid,
+     * the previous list is kept and the problem is logged.
      */
-    async checkAllServices(): Promise<void> {
-        console.log(`\n🔍 Iniciando verificación de ${this.services.length} servicios...`);
-        const startTime = Date.now();
+    syncServices(): void {
+        if (!this.options.loadServices) return;
 
-        for (const service of this.services) {
-            try {
-                const result = await this.checkUseCase.execute(service);
+        let configs: ServiceConfig[];
+        try {
+            configs = this.options.loadServices();
+        } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            console.error(`⚠️  No se pudo recargar la lista de servicios, se mantiene la anterior.\n${reason}`);
+            return;
+        }
 
-                // Send alert if service is down and has exceeded failure threshold
-                if (!result.success && service.consecutiveFailures >= this.config.maxConsecutiveFailures) {
-                    await this.sendAlert(service, result.message);
-                }
-            } catch (error) {
-                console.error(`❌ Error verificando ${service.name}:`, error);
+        const current = new Map(this.services.map(service => [service.url, service]));
+        const next: Service[] = [];
+
+        for (const config of configs) {
+            const existing = current.get(config.url);
+
+            if (existing) {
+                existing.name = config.name;
+                existing.contentValidation = config.contentValidation;
+                current.delete(config.url);
+                next.push(existing);
+            } else {
+                const service = new Service(config);
+                console.log(`➕ Servicio agregado: ${service.name} (${service.url})`);
+                next.push(service);
             }
         }
 
-        const totalTime = Date.now() - startTime;
-        console.log(`✅ Verificación completada en ${totalTime}ms\n`);
+        for (const removed of current.values()) {
+            console.log(`➖ Servicio eliminado: ${removed.name} (${removed.url})`);
+        }
+
+        this.services = next;
     }
 
     /**
-     * Sends an email alert for a failed service
-     * @param service - The service that failed
-     * @param errorMessage - Description of the failure
+     * Checks all registered services and sends alerts if needed
+     *
+     * A cycle that starts while the previous one is still running is skipped.
+     * Services are checked in parallel; a failure in one never affects the others.
+     *
+     * For each service:
+     * 1. Executes health check via CheckUseCase
+     * 2. Decides whether a down / reminder / recovery email is due
+     * 3. Sends the email and records it only if it was delivered
      */
-    private async sendAlert(service: Service, errorMessage: string): Promise<void> {
+    async checkAllServices(): Promise<void> {
+        if (this.isChecking) {
+            console.warn('⚠️  La verificación anterior sigue en curso, se omite este ciclo');
+            return;
+        }
+
+        this.isChecking = true;
+
         try {
-            await this.sendEmailAlert.execute(
-                service.name,
-                service.url,
-                `${errorMessage} (Fallos consecutivos: ${service.consecutiveFailures})`
-            );
+            this.syncServices();
+
+            console.log(`\n🔍 Iniciando verificación de ${this.services.length} servicios...`);
+            const startTime = Date.now();
+
+            await Promise.all(this.services.map(service => this.checkService(service)));
+
+            const totalTime = Date.now() - startTime;
+            console.log(`✅ Verificación completada en ${totalTime}ms\n`);
+        } finally {
+            this.isChecking = false;
+        }
+
+        try {
+            await this.options.onCycleComplete?.();
         } catch (error) {
-            console.error(`❌ Error enviando alerta para ${service.name}:`, error);
+            console.error('❌ Error en la acción posterior al ciclo:', error);
+        }
+    }
+
+    /**
+     * Checks one service and notifies if needed. Never throws.
+     * @param service - Service to check
+     */
+    private async checkService(service: Service): Promise<void> {
+        try {
+            const result = await this.checkUseCase.execute(service);
+            await this.notify(service, result);
+        } catch (error) {
+            console.error(`❌ Error verificando ${service.name}:`, error);
+        }
+    }
+
+    /**
+     * Sends the notification that corresponds to the latest check result, if any
+     *
+     * The incident state is updated only after the email was delivered, so a
+     * failed delivery is retried on the next cycle.
+     *
+     * @param service - The service that was just checked
+     * @param result - Result of the check
+     */
+    private async notify(service: Service, result: CheckResult): Promise<void> {
+        const now = new Date();
+        const type = decideAlert(service, result.success, now, this.config);
+
+        if (!type) return;
+
+        const notification: AlertNotification = {
+            type,
+            serviceName: service.name,
+            serviceUrl: service.url,
+            detail: type === 'recovery'
+                ? `El servicio volvió a responder correctamente (${result.message})`
+                : `${result.message} (Fallos consecutivos: ${service.consecutiveFailures})`,
+            downSince: service.downSince
+        };
+
+        try {
+            await this.sendEmailAlert.execute(notification);
+        } catch (error) {
+            console.error(`❌ Error enviando alerta (${type}) para ${service.name}:`, error);
+            return;
+        }
+
+        if (type === 'recovery') {
+            service.clearIncident();
+        } else {
+            service.markAlerted(now);
         }
     }
 
     /**
      * Starts the monitoring service
-     * 
+     *
      * Performs initial check immediately, then schedules periodic checks
      * according to the configured cron expression.
      */
@@ -120,13 +223,13 @@ export class MonitorService {
         console.log(`💻 Servicios: ${this.services.length}`);
 
         // Run initial check immediately
-        this.checkAllServices();
+        this.checkAllServices().catch(error => console.error('❌ Error en la verificación inicial:', error));
 
         // Schedule periodic checks
         this.cronJob = cron.schedule(
             this.config.checkInterval,
             () => {
-                this.checkAllServices();
+                this.checkAllServices().catch(error => console.error('❌ Error en la verificación programada:', error));
             },
             {
                 timezone: this.config.timezone
@@ -198,7 +301,7 @@ export class MonitorService {
                 const statusIcon = service.status === 'up' ? '🟢' :
                     service.status === 'down' ? '🔴' : '⚪';
                 const lastCheck = service.lastCheck
-                    ? service.lastCheck.toLocaleString('es-CO', { timeZone: 'America/Bogota' })
+                    ? service.lastCheck.toLocaleString('es-CO', { timeZone: this.config.timezone })
                     : 'Nunca';
                 console.log(`   ${statusIcon} ${service.name} - Última verificación: ${lastCheck}`);
             });

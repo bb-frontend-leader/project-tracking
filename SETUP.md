@@ -1,8 +1,6 @@
 # 📚 Books&Books - Guía Rápida de Configuración
 
-## Paso 1: Configurar Gmail para SMTP
-
-### Opción A: Usar Contraseña de Aplicación (Recomendado)
+## Paso 1: Configurar el correo (Gmail)
 
 1. Ve a tu cuenta de Google: https://myaccount.google.com
 2. En el menú izquierdo, selecciona **Seguridad**
@@ -14,34 +12,21 @@
    - Dale un nombre: "Monitor Sitios Web"
 6. Copia la contraseña de 16 caracteres
 
-### Opción B: Usar otro servicio SMTP
-
-**Outlook/Hotmail:**
-```env
-SMTP_HOST=smtp-mail.outlook.com
-SMTP_PORT=587
-SMTP_SECURE=false
-```
-
-**Yahoo:**
-```env
-SMTP_HOST=smtp.mail.yahoo.com
-SMTP_PORT=587
-SMTP_SECURE=false
-```
-
-**Servicio SMTP personalizado:**
-Usa las credenciales proporcionadas por tu proveedor
+**Otro proveedor:** el proyecto usa el `service` de nodemailer, así que basta con cambiar `MAILER_SERVICE`
+(por ejemplo `hotmail` para Outlook/Hotmail o `yahoo`). La lista completa está en la
+[documentación de nodemailer](https://nodemailer.com/smtp/well-known-services/).
 
 ## Paso 2: Editar el archivo .env
 
-Abre el archivo `.env` en la raíz del proyecto y completa:
+Copia la plantilla y completa los valores:
+
+```bash
+cp .env.example .env
+```
 
 ```env
 # Gmail
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_SECURE=false
+MAILER_SERVICE=gmail
 SMTP_USER=tu-email@gmail.com
 SMTP_PASS=xxxx xxxx xxxx xxxx    # La contraseña de aplicación de 16 caracteres
 
@@ -54,46 +39,65 @@ CHECK_INTERVAL=*/5 * * * *
 
 TIMEZONE=America/Bogota
 MAX_CONSECUTIVE_FAILURES=2
+ALERT_REMINDER_MINUTES=360
 HTTP_TIMEOUT=10000
 ```
 
+Todas las variables están descritas en [README.md](README.md#variables-de-entorno).
+
 ## Paso 3: Configurar los sitios a monitorear
 
-Edita `src/config/services.config.ts`:
+Los sitios viven en `services.json`, un archivo que **no se guarda en git**. Créalo desde la plantilla:
 
-```typescript
-export const servicesConfig = [
-    {
-        name: 'VIMEP 2025',
-        url: 'https://demos.booksandbooksdigital.com.co/12-vimep-2025/',
-        contentValidation: {
-            checkForApacheIndex: true  // Detecta listados de directorios
-        }
-    },
-    {
-        name: 'Mi Proyecto Web',
-        url: 'https://mi-sitio.com',
-        contentValidation: {
-            checkForApacheIndex: true
-        }
-    },
-    // Agrega más sitios...
-];
+```bash
+cp services.example.json services.json
 ```
 
-**💡 Validación de Contenido:**
-- `checkForApacheIndex: true` - Detecta si el sitio muestra "Index of" de Apache (indica archivos faltantes)
+Y edítalo:
+
+```json
+{
+  "defaults": {
+    "contentValidation": {
+      "checkForDirectoryListing": true,
+      "forbiddenText": ["Welcome to nginx!", "Página no encontrada"]
+    }
+  },
+  "services": [
+    {
+      "name": "VIMEP 2025",
+      "url": "https://demos.booksandbooksdigital.com.co/12-vimep-2025/",
+      "contentValidation": { "expectedTitle": "12 OVAS VIMEP 2025", "checkAssets": true }
+    },
+    {
+      "name": "Mi Proyecto Web",
+      "url": "https://mi-sitio.com"
+    }
+  ]
+}
+```
+
+**💡 Validación de Contenido** (todas opcionales):
+- `expectedTitle` - Texto que debe aparecer en el `<title>` de la página
+- `checkForDirectoryListing: true` - Detecta listados "Index of /" (indica archivos faltantes)
+- `forbiddenText` - Textos que no deben aparecer (página por defecto de nginx, "Página no encontrada")
+- `checkAssets: true` - Para SPAs: verifica que los JS/CSS de la página respondan
+
+**🔄 Sin reiniciar ni hacer deploy:** el monitor relee `services.json` en cada ciclo. Para agregar, quitar o editar un sitio, guarda el archivo y espera al siguiente ciclo. Si el archivo queda con errores, el monitor mantiene la lista anterior y muestra qué corregir en la consola.
 
 ## Paso 4: Ejecutar
 
 ```bash
-# Desarrollo (con recarga automática)
+# Desarrollo (con recarga automática al cambiar el código)
 npm run dev
 
 # Producción
 npm run build
 npm start
 ```
+
+Para dejarlo corriendo de forma permanente (pm2, systemd) consulta
+[Ejecución continua](README.md#-ejecución-continua) en el README. Ejecútalo siempre desde la carpeta del proyecto.
 
 ## 🎯 Expresiones Cron Comunes
 
@@ -110,7 +114,7 @@ npm start
 
 ### Cambiar timeout de HTTP
 ```env
-HTTP_TIMEOUT=15000  # 15 segundos
+HTTP_TIMEOUT=15000  # 15 segundos (cubre la respuesta completa)
 ```
 
 ### Cambiar número de fallos antes de alertar
@@ -118,22 +122,37 @@ HTTP_TIMEOUT=15000  # 15 segundos
 MAX_CONSECUTIVE_FAILURES=3  # Alertar después de 3 fallos consecutivos
 ```
 
+### Recordatorios mientras un sitio sigue caído
+```env
+ALERT_REMINDER_MINUTES=120  # Un recordatorio cada 2 horas (0 = sin recordatorios)
+```
+
 ### Múltiples destinatarios
 ```env
 EMAIL_TO=admin@example.com,soporte@example.com,manager@example.com
 ```
 
+### Usar otra ubicación para la lista de servicios
+```env
+SERVICES_FILE=/etc/project-tracking/services.json
+```
+
+### Detectar si el monitor se cae
+```env
+HEARTBEAT_URL=https://hc-ping.com/tu-uuid   # Se hace un GET al final de cada ciclo
+```
+
 ## 📊 Revisar Logs
 
-Los logs se guardan en `logs/monitor.log` en formato JSON.
+Los logs se guardan en `logs/monitor-AAAA-MM-DD.log` (un archivo por día) en formato JSON, una línea por verificación. Los archivos con más de `LOG_RETENTION_DAYS` días (30 por defecto) se borran solos.
 
-Para ver los últimos logs:
+Para ver los logs de hoy:
 ```bash
-# Windows
-type logs\monitor.log
+# Windows (PowerShell)
+Get-Content logs\monitor-2026-10-07.log -Tail 20
 
 # Linux/Mac
-tail -f logs/monitor.log
+tail -f logs/monitor-$(date +%F).log
 ```
 
 ## 🔍 Verificar que funciona
@@ -141,31 +160,37 @@ tail -f logs/monitor.log
 1. Inicia el sistema: `npm run dev`
 2. Verás mensajes en consola mostrando las verificaciones
 3. Si todo está bien, verás: ✅ Service is up (200)
-4. Para probar alertas, puedes temporalmente poner una URL inválida
+4. Para probar alertas, puedes agregar temporalmente a `services.json` una URL inexistente: tras `MAX_CONSECUTIVE_FAILURES` ciclos recibirás el correo de caída, y al quitarla (o corregirla) el de recuperación
 
 ## 🆘 Solución de Problemas
+
+### "No se pudo cargar la lista de servicios"
+- Verifica que exista `services.json` (cópialo desde `services.example.json`)
+- El mensaje indica la línea del problema: JSON mal formado, URL inválida, claves desconocidas, etc.
 
 ### "Invalid login: 535-5.7.8 Username and Password not accepted"
 - Asegúrate de usar una Contraseña de Aplicación, no tu contraseña normal de Gmail
 - Verifica que la verificación en dos pasos esté activada
 
-### "ECONNREFUSED"
-- Verifica el host y puerto SMTP
-- Asegúrate de tener conexión a internet
+### "ECONNREFUSED" al enviar correos
+- Verifica `MAILER_SERVICE` y tu conexión a internet
+- El monitor sigue funcionando y reintenta el envío en cada ciclo
 
 ### No se envían emails
 - Revisa la carpeta de spam
 - Verifica que `EMAIL_TO` tenga un email válido
+- Recuerda que solo se envía un aviso por incidente, más los recordatorios y la recuperación
 
 ### Los sitios aparecen como "down" pero están activos
 - Aumenta `HTTP_TIMEOUT`
 - Verifica que las URLs tengan el protocolo correcto (https://)
+- Revisa el mensaje del log: si dice `Unexpected page title`, el `expectedTitle` no coincide con el título real de la página
 
 ## 🎉 ¡Listo!
 
 Una vez configurado correctamente, el sistema:
 - ✅ Verificará automáticamente tus sitios
-- ✅ Enviará emails profesionales cuando detecte problemas
+- ✅ Enviará un correo al caer, recordatorios y un aviso al recuperarse
 - ✅ Mantendrá logs detallados
 - ✅ Mostrará el estado en tiempo real en consola
 

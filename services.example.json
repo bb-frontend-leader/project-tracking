@@ -1,0 +1,60 @@
+{
+  "defaults": {
+    "contentValidation": {
+      "checkForDirectoryListing": true,
+      "forbiddenText": ["Welcome to nginx!", "Página no encontrada"]
+    }
+  },
+  "services": [
+    {
+      "name": "REDG 2023",
+      "url": "https://demos.booksandbooksdigital.com.co/ovas-doctorado-new/",
+      "contentValidation": { "expectedTitle": "OVAS-DOCTORADO" }
+    },
+    {
+      "name": "BOOKS 2025",
+      "url": "https://demos.booksandbooksdigital.com.co/12-ovas-books/",
+      "contentValidation": { "expectedTitle": "12 OVAS BOOKS", "checkAssets": true }
+    },
+    {
+      "name": "VIMEP 2023",
+      "url": "https://demos.booksandbooksdigital.com.co/12-vimep-2023/",
+      "contentValidation": { "expectedTitle": "12 OVAS VIMEP 2023", "checkAssets": true }
+    },
+    {
+      "name": "VIMEP 2024",
+      "url": "https://demos.booksandbooksdigital.com.co/12-vimep-2024/",
+      "contentValidation": { "expectedTitle": "12 OVAS VIMEP 2024", "checkAssets": true }
+    },
+    {
+      "name": "VIMEP 2025",
+      "url": "https://demos.booksandbooksdigital.com.co/12-vimep-2025/",
+      "contentValidation": { "expectedTitle": "12 OVAS VIMEP 2025", "checkAssets": true }
+    },
+    {
+      "name": "100 OVAS",
+      "url": "https://demos.booksandbooksdigital.com.co/100-ovas/",
+      "contentValidation": { "expectedTitle": "Listado OVAS-UNAD" }
+    },
+    {
+      "name": "120 OVAS",
+      "url": "https://demos.booksandbooksdigital.com.co/120-ovas/",
+      "contentValidation": { "expectedTitle": "Listado OVAS-UNAD" }
+    },
+    {
+      "name": "120 OVAS 2023",
+      "url": "https://demos.booksandbooksdigital.com.co/120-ovas-2023/",
+      "contentValidation": { "expectedTitle": "120 OVAS 2023", "checkAssets": true }
+    },
+    {
+      "name": "200 OVAS 2025",
+      "url": "https://demos.booksandbooksdigital.com.co/200-ovas-2025/",
+      "contentValidation": { "expectedTitle": "200 OVAS 2025", "checkAssets": true }
+    },
+    {
+      "name": "300 OVAS 2026",
+      "url": "https://demos.booksandbooksdigital.com.co/300-ovas-2026/",
+      "contentValidation": { "expectedTitle": "300 OVAS 2026", "checkAssets": true }
+    }
+  ]
+}
